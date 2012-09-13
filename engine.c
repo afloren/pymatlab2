@@ -6,7 +6,7 @@
 //
 //
 
-#include <Python/Python.h>
+#include <Python.h>
 #include <matrix.h>
 #include <engine.h>
 
@@ -53,7 +53,29 @@ static PyObject * engine_close(PyObject *self, PyObject *args)
 static PyObject * mxToPy(mxArray *mx)
 {
   switch(mxGetClassID(mx)) {
-  case mxLOGICAL_CLASS:
+  case mxLOGICAL_CLASS: 
+    {
+      const size_t ndims = mxGetNumberOfDimensions(mx);
+      const size_t *dims = mxGetDimensions(mx);
+      const size_t nelms = mxGetNumberOfElements(mx);
+      const size_t elmsz = mxGetElementSize(mx);
+      bool *arr = mxGetLogicals(mx);
+      
+      Py_buffer view;
+      view.buf = arr;
+      view.len = nelms*elmsz;
+      view.readonly = true;
+      view.format = "?";
+      view.ndim = ndims;
+      view.shape = dims;
+      view.strides = NULL;
+      view.suboffsets = NULL;
+      view.itemsize = elmsz;
+      view.internal = NULL;
+
+      return PyMemoryView_FromBuffer(&view);
+    }
+    break;
   case mxCHAR_CLASS:
   case mxVOID_CLASS:
   case mxDOUBLE_CLASS:
@@ -74,7 +96,7 @@ static PyObject * mxToPy(mxArray *mx)
   case mxUNKNOWN_CLASS:
   default:
     PyErr_SetString(engineError, "Unknown mx type");
-    return NULL:
+    return NULL;
   }
 
   PyErr_SetString(engineError, "Something went very wrong");
