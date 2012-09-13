@@ -4,7 +4,8 @@ project (PyMatlab)
 
 find_package(PythonLibs REQUIRED)
 find_package(Matlab REQUIRED)
-include_directories(${PYTHON_INCLUDE_DIRS} ${MATLAB_INCLUDE_DIR})
+find_path(NUMPY_INCLUDE_DIR numpy/ndarrayobject.h) 
+include_directories(${PYTHON_INCLUDE_DIRS} ${MATLAB_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 
 set(sources engine.c)
 set(lib_name engine)

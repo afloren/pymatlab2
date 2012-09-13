@@ -7,6 +7,7 @@
 //
 
 #include <Python.h>
+#include <numpy/ndarrayobject.h>
 #include <matrix.h>
 #include <engine.h>
 
@@ -50,34 +51,28 @@ static PyObject * engine_close(PyObject *self, PyObject *args)
   Py_RETURN_NONE;
 }
 
+int mxtonpy[] = {
+  NPY_USERDEF,
+  NPY_USERDEF,
+  NPY_USERDEF,
+  NPY_BOOL,
+  NPY_CHAR,
+  NPY_USERDEF,
+  NPY_DOUBLE,
+  NPY_FLOAT,
+  NPY_SHORT, NPY_USHORT,
+  NPY_INT, NPY_UINT,
+  NPY_LONG, NPY_ULONG,
+  NPY_LONGLONG, NPY_ULONGLONG,
+  NPY_USERDEF
+};
+
 static PyObject * mxToPy(mxArray *mx)
 {
-  switch(mxGetClassID(mx)) {
+  int mxClassID = mxGetClassID(mx);
+  switch(mxClassID) {
   case mxLOGICAL_CLASS: 
-    {
-      const size_t ndims = mxGetNumberOfDimensions(mx);
-      const size_t *dims = mxGetDimensions(mx);
-      const size_t nelms = mxGetNumberOfElements(mx);
-      const size_t elmsz = mxGetElementSize(mx);
-      bool *arr = mxGetLogicals(mx);
-      
-      Py_buffer view;
-      view.buf = arr;
-      view.len = nelms*elmsz;
-      view.readonly = true;
-      view.format = "?";
-      view.ndim = ndims;
-      view.shape = dims;
-      view.strides = NULL;
-      view.suboffsets = NULL;
-      view.itemsize = elmsz;
-      view.internal = NULL;
-
-      return PyMemoryView_FromBuffer(&view);
-    }
-    break;
   case mxCHAR_CLASS:
-  case mxVOID_CLASS:
   case mxDOUBLE_CLASS:
   case mxSINGLE_CLASS:
   case mxINT8_CLASS:
@@ -88,14 +83,25 @@ static PyObject * mxToPy(mxArray *mx)
   case mxUINT32_CLASS:
   case mxINT64_CLASS:
   case mxUINT64_CLASS:
+    {
+      const size_t nd = mxGetNumberOfDimensions(mx);
+      const size_t *dims = mxGetDimensions(mx);
+      int type_num = mxtonpy[mxClassID];
+      void *data = mxGetData(mx);
+      int itemsize = mxGetElementSize(mx);
+      
+      return PyArray_New(&PyArray_Type, nd, dims, type_num, NULL, data, itemsize, NPY_F_CONTIGUOUS, NULL);
+    }
+    break;
   case mxSTRUCT_CLASS:
   case mxCELL_CLASS:
   case mxFUNCTION_CLASS:
     PyErr_SetString(engineError, "Not yet implemented");
     return NULL;
+  case mxVOID_CLASS:
   case mxUNKNOWN_CLASS:
   default:
-    PyErr_SetString(engineError, "Unknown mx type");
+    PyErr_SetString(engineError, "Unknown or bad  mx type");
     return NULL;
   }
 
@@ -116,6 +122,23 @@ static PyObject * engine_getVariable(PyObject *self, PyObject *args)
 
   return mxToPy(mx);
 }
+
+mxClassID npytomx[] = { 
+  mxLOGICAL_CLASS,
+  mxUNKNOWN_CLASS,
+  mxUNKNOWN_CLASS,
+  mxINT8_CLASS, mxUINT8_CLASS,
+  mxINT16_CLASS, mxUINT16_CLASS,
+  mxINT32_CLASS, mxUINT32_CLASS,
+  mxINT64_CLASS, mxUINT64_CLASS,
+  mxSINGLE_CLASS, mxDOUBLE_CLASS, mxUNKNOWN_CLASS,
+  mxUNKNOWN_CLASS, mxUNKNOWN_CLASS, mxUNKNOWN_CLASS,
+  mxUNKNOWN_CLASS,
+  mxCHAR_CLASS, mxCHAR_CLASS,
+  mxUNKNOWN_CLASS,
+  mxUNKNOWN_CLASS,
+  mxCHAR_CLASS,
+};
 
 static mxArray * pyToMx(PyObject *py)
 {
@@ -222,7 +245,7 @@ PyMODINIT_FUNC
 initengine(void)
 {
   PyObject *m;
-  
+  import_array();
   m = Py_InitModule("engine", engineMethods);
   if (m == NULL)
     return;
