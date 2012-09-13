@@ -1,0 +1,2 @@
+PyMatlab is a python library that provides bindings to the Matlab engine c interface.
+PyMatlab automatically converts between Matlab matrix objects and Python objects.
