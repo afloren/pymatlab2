@@ -69,8 +69,8 @@ int mxtonpy[] = {
 
 static PyObject * mxToPy(mxArray *mx)
 {
-  int mxClassID = mxGetClassID(mx);
-  switch(mxClassID) {
+  int classid = mxGetClassID(mx);
+  switch(classid) {
   case mxLOGICAL_CLASS: 
   case mxCHAR_CLASS:
   case mxDOUBLE_CLASS:
@@ -86,7 +86,7 @@ static PyObject * mxToPy(mxArray *mx)
     {
       const size_t nd = mxGetNumberOfDimensions(mx);
       const size_t *dims = mxGetDimensions(mx);
-      int type_num = mxtonpy[mxClassID];
+      int type_num = mxtonpy[classid];
       void *data = mxGetData(mx);
       int itemsize = mxGetElementSize(mx);
       
@@ -125,8 +125,7 @@ static PyObject * engine_getVariable(PyObject *self, PyObject *args)
 
 mxClassID npytomx[] = { 
   mxLOGICAL_CLASS,
-  mxUNKNOWN_CLASS,
-  mxUNKNOWN_CLASS,
+  mxINT8_CLASS, mxUINT8_CLASS,
   mxINT8_CLASS, mxUINT8_CLASS,
   mxINT16_CLASS, mxUINT16_CLASS,
   mxINT32_CLASS, mxUINT32_CLASS,
@@ -142,6 +141,54 @@ mxClassID npytomx[] = {
 
 static mxArray * pyToMx(PyObject *py)
 {
+  PyArrayObject *arr = (PyArrayObject*)PyArray_FROM_OF(py,NPY_F_CONTIGUOUS);
+  int type_num = PyArray_TYPE(arr);
+  switch(type_num) {
+  case NPY_BOOL:
+  case NPY_BYTE:
+  case NPY_UBYTE:
+  case NPY_SHORT:
+  case NPY_USHORT:
+  case NPY_INT:
+  case NPY_UINT:
+  case NPY_LONG:
+  case NPY_ULONG:
+  case NPY_LONGLONG:
+  case NPY_ULONGLONG:
+  case NPY_FLOAT:
+  case NPY_DOUBLE:
+  case NPY_LONGDOUBLE:
+  case NPY_STRING:
+  case NPY_UNICODE:
+  case NPY_CHAR:
+    {
+      size_t nd = PyArray_NDIM(arr);
+      size_t *dims = PyArray_DIMS(arr);
+      mxClassID classid = npytomx[type_num];
+      mxArray *mx = mxCreateNumericArray(nd,dims,classid,mxREAL);
+      void *dst = mxGetData(mx);
+      void *src = PyArray_DATA(arr);
+      size_t sz = PyArray_NBYTES(arr);
+      memcpy(dst,src,sz);
+      return mx;
+    }
+    break;
+  case NPY_CFLOAT:
+  case NPY_CDOUBLE:
+  case NPY_CLONGDOUBLE:
+  case NPY_OBJECT:
+    PyErr_SetString(engineError, "Not yet implemented");
+    return NULL;
+  case NPY_VOID:
+  case NPY_NTYPES:
+  case NPY_NOTYPE:
+  case NPY_USERDEF:
+  default:
+    PyErr_SetString(engineError, "Unknown or bad type_num");
+    return NULL;
+  }
+
+  PyErr_SetString(engineError, "Something went very wrong");
   return NULL;
 }
 
@@ -153,7 +200,7 @@ static PyObject * engine_putVariable(PyObject *self, PyObject *args)
   mxArray *pm;
   int sts;
 
-  if(!PyArg_ParseTuple(args, "lso", &ep, &name, &py))
+  if(!PyArg_ParseTuple(args, "lsO", &ep, &name, &py))
     return NULL;
 
   pm = pyToMx(py);
