@@ -72,7 +72,6 @@ static PyObject * mxToPy(mxArray *mx)
   int classid = mxGetClassID(mx);
   switch(classid) {
   case mxLOGICAL_CLASS: 
-  case mxCHAR_CLASS:
   case mxDOUBLE_CLASS:
   case mxSINGLE_CLASS:
   case mxINT8_CLASS:
@@ -83,6 +82,7 @@ static PyObject * mxToPy(mxArray *mx)
   case mxUINT32_CLASS:
   case mxINT64_CLASS:
   case mxUINT64_CLASS:
+  case mxCHAR_CLASS:
     {
       const size_t nd = mxGetNumberOfDimensions(mx);
       const size_t *dims = mxGetDimensions(mx);
@@ -123,30 +123,97 @@ static PyObject * engine_getVariable(PyObject *self, PyObject *args)
   return mxToPy(mx);
 }
 
-mxClassID npytomx[] = { 
-  mxLOGICAL_CLASS,
-  mxINT8_CLASS, mxUINT8_CLASS,
-  mxINT8_CLASS, mxUINT8_CLASS,
-  mxINT16_CLASS, mxUINT16_CLASS,
-  mxINT32_CLASS, mxUINT32_CLASS,
-  mxINT64_CLASS, mxUINT64_CLASS,
-  mxSINGLE_CLASS, mxDOUBLE_CLASS, mxUNKNOWN_CLASS,
-  mxUNKNOWN_CLASS, mxUNKNOWN_CLASS, mxUNKNOWN_CLASS,
-  mxUNKNOWN_CLASS,
-  mxCHAR_CLASS, mxCHAR_CLASS,
-  mxUNKNOWN_CLASS,
-  mxUNKNOWN_CLASS,
-  mxCHAR_CLASS,
-};
+static mxClassID sizeToMx(size_t sz, bool s)
+{
+  switch(sz) {
+  case 1:
+    return s ? mxINT8_CLASS : mxUINT8_CLASS;
+  case 2:
+    return s ? mxINT16_CLASS : mxUINT16_CLASS;
+  case 4:
+    return s ? mxINT32_CLASS : mxUINT32_CLASS;
+  case 8:
+    return s ? mxINT64_CLASS : mxUINT64_CLASS;
+  }
+  return mxUNKNOWN_CLASS;
+}
+
+size_t zerodim[] = {1};
+
+static mxArray * createNumericArray(size_t nd, size_t *dims, mxClassID classid, void *data, size_t sz)
+{
+  if(nd==0) {
+    nd = 1;
+    dims = zerodim;
+  }
+  mxArray *mx = mxCreateNumericArray(nd,dims,classid,mxREAL);
+  void *dst = mxGetData(mx);
+  memcpy(dst,data,sz);
+  return mx;
+}
+
+static mxArray * createStringArray(size_t nd, size_t *dims, mxClassID classid, void *data, size_t sz)
+{
+  if(nd==0) {
+    mxArray *mx = mxCreateCharArray(1,&sz);
+    void *dst = mxGetData(mx);
+    memcpy(dst,data,sz);
+  }
+  PyErr_SetString(engineError,"Not yet implemented");
+  return NULL;
+}
+
+static mxClassID npy2mx(int type_num)
+{
+  switch(type_num) {
+  case NPY_BOOL:
+    return mxLOGICAL_CLASS;
+  case NPY_BYTE:
+    return mxINT8_CLASS;
+  case NPY_UBYTE:
+    return mxUINT8_CLASS;
+  case NPY_FLOAT:
+    return mxSINGLE_CLASS;
+  case NPY_DOUBLE:
+    return mxDOUBLE_CLASS;
+  case NPY_SHORT:
+    return sizeToMx(sizeof(npy_short),true);
+  case NPY_USHORT:
+    return sizeToMx(sizeof(npy_ushort),false);
+  case NPY_INT:
+    return sizeToMx(sizeof(npy_int),true);
+  case NPY_UINT:
+    return sizeToMx(sizeof(npy_uint),false);
+  case NPY_LONG:
+    return sizeToMx(sizeof(npy_long),true);
+  case NPY_ULONG:
+    return sizeToMx(sizeof(npy_ulong),false);
+  case NPY_LONGLONG:
+    return sizeToMx(sizeof(npy_longlong),true);
+  case NPY_ULONGLONG:
+    return sizeToMx(sizeof(npy_ulonglong),false);
+  }
+
+  return mxUNKNOWN_CLASS;
+}
 
 static mxArray * pyToMx(PyObject *py)
 {
-  PyArrayObject *arr = (PyArrayObject*)PyArray_FROM_OF(py,NPY_F_CONTIGUOUS);
+  PyArrayObject *arr = (PyArrayObject*)PyArray_FROM_OF(py,NPY_F_CONTIGUOUS|NPY_ALIGNED|NPY_WRITEABLE);
   int type_num = PyArray_TYPE(arr);
+  size_t nd = PyArray_NDIM(arr);
+  size_t *dims = PyArray_DIMS(arr);
+  void *data = PyArray_DATA(arr);
+  size_t sz = PyArray_NBYTES(arr);
+  mxClassID classid = mxUNKNOWN_CLASS;
+  mxArray *mx = NULL;
+
   switch(type_num) {
   case NPY_BOOL:
   case NPY_BYTE:
   case NPY_UBYTE:
+  case NPY_FLOAT:
+  case NPY_DOUBLE:
   case NPY_SHORT:
   case NPY_USHORT:
   case NPY_INT:
@@ -155,40 +222,27 @@ static mxArray * pyToMx(PyObject *py)
   case NPY_ULONG:
   case NPY_LONGLONG:
   case NPY_ULONGLONG:
-  case NPY_FLOAT:
-  case NPY_DOUBLE:
-  case NPY_LONGDOUBLE:
+    return createNumericArray(nd,dims,npy2mx(type_num),data,sz);
   case NPY_STRING:
   case NPY_UNICODE:
   case NPY_CHAR:
-    {
-      size_t nd = PyArray_NDIM(arr);
-      size_t *dims = PyArray_DIMS(arr);
-      mxClassID classid = npytomx[type_num];
-      mxArray *mx = mxCreateNumericArray(nd,dims,classid,mxREAL);
-      void *dst = mxGetData(mx);
-      void *src = PyArray_DATA(arr);
-      size_t sz = PyArray_NBYTES(arr);
-      memcpy(dst,src,sz);
-      return mx;
-    }
-    break;
+    return createStringArray(nd,dims,npy2mx(type_num),data,sz);
   case NPY_CFLOAT:
   case NPY_CDOUBLE:
-  case NPY_CLONGDOUBLE:
   case NPY_OBJECT:
+  case NPY_LONGDOUBLE:
+  case NPY_CLONGDOUBLE:
     PyErr_SetString(engineError, "Not yet implemented");
     return NULL;
   case NPY_VOID:
   case NPY_NTYPES:
   case NPY_NOTYPE:
   case NPY_USERDEF:
-  default:
-    PyErr_SetString(engineError, "Unknown or bad type_num");
+    PyErr_SetString(engineError, "Bad type_num");
     return NULL;
   }
-
-  PyErr_SetString(engineError, "Something went very wrong");
+      
+  PyErr_SetString(engineError, "Unknown type_num");
   return NULL;
 }
 
