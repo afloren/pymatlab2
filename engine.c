@@ -67,9 +67,44 @@ int mxtonpy[] = {
   NPY_USERDEF
 };
 
+typedef struct {
+  PyObject_HEAD
+} StructObject;
+
+static PyTypeObject StructObjectType = {
+  PyObject_HEAD_INIT(NULL)
+  0,
+  "PyMatlab.Struct",
+  sizeof(StructObject),
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  Py_TPFLAGS_DEFAULT,
+  "Matlab struct object"
+};
+
 static PyObject * mxToPy(mxArray *mx)
 {
   int classid = mxGetClassID(mx);
+  const size_t nd = mxGetNumberOfDimensions(mx);
+  const size_t *dims = mxGetDimensions(mx);
+  int type_num = mxtonpy[classid];
+  void *data = mxGetData(mx);
+  int itemsize = mxGetElementSize(mx);
+  
   switch(classid) {
   case mxLOGICAL_CLASS: 
   case mxDOUBLE_CLASS:
@@ -82,30 +117,29 @@ static PyObject * mxToPy(mxArray *mx)
   case mxUINT32_CLASS:
   case mxINT64_CLASS:
   case mxUINT64_CLASS:
+    return PyArray_New(&PyArray_Type,nd,dims,type_num,NULL,data,itemsize,NPY_F_CONTIGUOUS,NULL);
   case mxCHAR_CLASS:
-    {
-      const size_t nd = mxGetNumberOfDimensions(mx);
-      const size_t *dims = mxGetDimensions(mx);
-      int type_num = mxtonpy[classid];
-      void *data = mxGetData(mx);
-      int itemsize = mxGetElementSize(mx);
-      
-      return PyArray_New(&PyArray_Type, nd, dims, type_num, NULL, data, itemsize, NPY_F_CONTIGUOUS, NULL);
-    }
-    break;
+    return PyString_FromString(mxArrayToString(mx));
   case mxSTRUCT_CLASS:
+    {
+      PyObject *obj = PyObject_Call((PyObject *) &StructObjectType, PyTuple_New(0), NULL);
+      int i,numFields = mxGetNumberOfFields(mx);
+      for(i=0;i<numFields;i++) {
+	const char *fieldName = mxGetFieldByNumber(mx,0,i);
+	PyObject_SetAttrString(obj,fieldName,mxToPy(mxGetField(mx,0,fieldName)));
+      }
+    }
   case mxCELL_CLASS:
   case mxFUNCTION_CLASS:
     PyErr_SetString(engineError, "Not yet implemented");
     return NULL;
   case mxVOID_CLASS:
   case mxUNKNOWN_CLASS:
-  default:
-    PyErr_SetString(engineError, "Unknown or bad  mx type");
+    PyErr_SetString(engineError, "Bad  mx type");
     return NULL;
   }
 
-  PyErr_SetString(engineError, "Something went very wrong");
+  PyErr_SetString(engineError, "Unknown mx type");
   return NULL;
 }
 
@@ -155,9 +189,10 @@ static mxArray * createNumericArray(size_t nd, size_t *dims, mxClassID classid, 
 static mxArray * createStringArray(size_t nd, size_t *dims, mxClassID classid, void *data, size_t sz)
 {
   if(nd==0) {
-    mxArray *mx = mxCreateCharArray(1,&sz);
-    void *dst = mxGetData(mx);
-    memcpy(dst,data,sz);
+    char *str = malloc(sz+1);
+    memcpy(str,data,sz);
+    str[sz] = NULL;
+    return mxCreateString(str);
   }
   PyErr_SetString(engineError,"Not yet implemented");
   return NULL;
@@ -193,7 +228,6 @@ static mxClassID npy2mx(int type_num)
   case NPY_ULONGLONG:
     return sizeToMx(sizeof(npy_ulonglong),false);
   }
-
   return mxUNKNOWN_CLASS;
 }
 
