@@ -22,7 +22,7 @@ static PyObject * engine_open(PyObject *self, PyObject *args)
 
   if(!PyArg_ParseTuple(args, "|z", &startcmd))
     return NULL;
-  
+
   ep = engOpen(startcmd);
 
   if(ep == NULL) {
