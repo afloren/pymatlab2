@@ -7,7 +7,7 @@ find_package(Matlab REQUIRED)
 find_path(NUMPY_INCLUDE_DIR numpy/ndarrayobject.h) 
 include_directories(${PYTHON_INCLUDE_DIRS} ${MATLAB_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 
-set(sources engine.c)
+set(sources engine.cpp)
 set(lib_name engine)
 add_library(${lib_name} SHARED ${sources})
 
