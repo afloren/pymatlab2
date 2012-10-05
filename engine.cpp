@@ -391,20 +391,20 @@ initengine(void)
     return;
 
   StructObject_Type.tp_new = PyType_GenericNew;
-  StructObject_Type.tp_name = "PyMatlab.engine.Struct";
+  StructObject_Type.tp_name = "pymatlab2.engine.Struct";
   StructObject_Type.tp_basicsize = sizeof(StructObject);
   StructObject_Type.tp_getattro = PyObject_GenericGetAttr;
   StructObject_Type.tp_setattro = PyObject_GenericSetAttr;
   StructObject_Type.tp_flags = Py_TPFLAGS_DEFAULT;
   StructObject_Type.tp_dictoffset = offsetof(StructObject,dict);
-  StructObject_Type.tp_doc = "PyMatlab Struct Object.";
+  StructObject_Type.tp_doc = "pymatlab2 Struct object.";
   if (PyType_Ready(&StructObject_Type) < 0)
     return;
 
   Py_INCREF(&StructObject_Type);
   PyModule_AddObject(m, "Struct", (PyObject*)&StructObject_Type);
   
-  engineError = PyErr_NewException("engine.Error", NULL, NULL);
+  engineError = PyErr_NewException("pymatlab2.engine.Error", NULL, NULL);
   Py_IncRef(engineError);
   PyModule_AddObject(m, "Error", engineError);
 }
