@@ -74,6 +74,7 @@ end
 
     def eval(self,string):
         rstr = engine.evalString(self._ep,self._evalstr.format(string))
+        sys.stdout.write(rstr)
         if self.get('pymatlab2_err') is 1:
             raise Exception(self.get('pymatlab2_errstr'))
         return rstr
@@ -93,15 +94,11 @@ end
         for a,v in zip(arglst,args):
             self.put(a,v)
         
-        rstr = ''
-
         if rvalues > 0:
-            rstr = self.eval('[{0}]={1}({2})'.format(','.join(retlst),func,','.join(arglst)))
+            self.eval('[{0}]={1}({2})'.format(','.join(retlst),func,','.join(arglst)))
         else:
-            rstr = self.eval('{0}({1})'.format(func,','.join(arglst)))
+            self.eval('{0}({1})'.format(func,','.join(arglst)))
         
-        print(rstr)
-
         ret = None
         if rvalues > 1:
             ret = tuple([self.get(r) for r in retlst]) 
