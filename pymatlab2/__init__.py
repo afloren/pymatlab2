@@ -1,4 +1,24 @@
 import engine
+import sys
+import dis
+
+def expecting():
+    f = sys._getframe().f_back.f_back
+    i = f.f_lasti + 3
+    bytecode = f.f_code.co_code
+    instruction = ord(bytecode[i])
+    while True:
+        if instruction == dis.opmap['DUP_TOP']:
+            if ord(bytecode[i+1]) == dis.opmap['UNPACK_SEQUENCE']:
+                return ord(bytecode[i+2])
+            i += 4
+            instruction = ord(bytecode[i])
+            continue
+        if instruction == dis.opmap['STORE_NAME']:
+            return 1
+        if instruction == dis.opmap['UNPACK_SEQUENCE']:
+            return ord(bytecode[i+1])
+        return 0
 
 class MatlabFunc:
     def __init__(self,session,name):
@@ -6,19 +26,21 @@ class MatlabFunc:
         self._name = name
 
     def __call__(self,*args,**kwds):
+        if 'rvalues' not in kwds.keys():
+            kwds['rvalues'] = expecting()
         return self._session.call(self._name,*args,**kwds)
 
 class Session:
-    _evalstr = '''
+    _evalstr = """
 try
   pymatlab2_err=0;
+  pymatlab2_errstr='';
   {0};
 catch e
-  disp(e);
-  pymatlab2_exception=e;
   pymatlab2_err=1;
+  pymatlab2_errstr=getReport(e,'extended');
 end
-'''
+"""
 
     def __init__(self,startcmd=None):
         self.__dict__['_ep'] = engine.open(startcmd);
@@ -28,7 +50,7 @@ end
         engine.close(self._ep);
 
     def __getattr__(self,name):
-        t = self.call('exist',name)
+        t = self.call('exist',name,rvalues=1)
         if t in (1,):
             return self.get(name)
         if t in (2,3,4,5,6):
@@ -51,9 +73,9 @@ end
         engine.putVariable(self._ep,name,value);
 
     def eval(self,string):
-        rstr = engine.evalString(self._ep,self._evalstr.format(string));
-        if self.get('pymatlab2_err') == 1:
-            raise Exception(self.get('pymatlab2_exception'))
+        rstr = engine.evalString(self._ep,self._evalstr.format(string))
+        if self.get('pymatlab2_err') is 1:
+            raise Exception(self.get('pymatlab2_errstr'))
         return rstr
 
     def getVisible(self):
@@ -63,12 +85,30 @@ end
         engine.setVisible(self._ep,value);
 
     def call(self,func,*args,**kwds):
-        rvalues = kwds['rvalues'] if 'rvalues' in kwds.keys() else 1
-        arglst = ['pymatlab2_a{0}'.format(i) for i in range(len(args))]
+        avalues = len(args)
+        arglst = ['pymatlab2_a{0}'.format(i) for i in range(avalues)]        
+        rvalues = kwds['rvalues'] if 'rvalues' in kwds.keys() else expecting()
+        retlst = ['pymatlab2_r{0}'.format(i) for i in range(rvalues)]
+
         for a,v in zip(arglst,args):
             self.put(a,v)
-        retlst = ['pymatlab2_r{0}'.format(i) for i in range(rvalues)]
-        self.eval('[{0}]={1}({2})'.format(str.join(',',retlst),func,str.join(',',arglst)))
-        ret = tuple([self.get(r) for r in retlst]) if rvalues > 1 else self.get(retlst[0])
-        self.eval('clear {0} {1}'.format(str.join(' ',arglst),str.join(' ',retlst)))
+        
+        rstr = ''
+
+        if rvalues > 0:
+            rstr = self.eval('[{0}]={1}({2})'.format(','.join(retlst),func,','.join(arglst)))
+        else:
+            rstr = self.eval('{0}({1})'.format(func,','.join(arglst)))
+        
+        print(rstr)
+
+        ret = None
+        if rvalues > 1:
+            ret = tuple([self.get(r) for r in retlst]) 
+        elif rvalues is 1:
+            ret = self.get(retlst[0])
+        
+        if (avalues+rvalues) > 0:
+            self.eval('clear {0} {1}'.format(' '.join(arglst),' '.join(retlst)))
+        
         return ret
